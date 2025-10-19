@@ -1,0 +1,75 @@
+{
+    "version": 1,
+    "name": "DrawingControls",
+    "maps": [
+        {
+            "name": "Drawing",
+            "id": "9356b12c-b5e7-46ef-a749-17460365848f",
+            "actions": [
+                {
+                    "name": "Position",
+                    "type": "Value",
+                    "id": "9d445790-fdf2-4393-a47a-b8f5ccb99d61",
+                    "expectedControlType": "Vector2",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Draw",
+                    "type": "Button",
+                    "id": "8199f270-9afb-4b06-89a4-4a2a5a5f0c63",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "RightClick",
+                    "type": "Button",
+                    "id": "1b2e489c-8dce-4777-94d8-873abb0b3405",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "b7146fb9-651c-40bb-a72d-2a59ad4591f8",
+                    "path": "<Mouse>/position",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Position",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "40f823d6-4478-491a-8cfe-594f3fe46026",
+                    "path": "<Mouse>/leftButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Draw",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "6f02433a-f626-4d65-b7b6-bcbdd11345a1",
+                    "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "RightClick",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}
