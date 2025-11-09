@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS strokes (
+  id SERIAL PRIMARY KEY,
+  uid VARCHAR(255) NOT NULL,
+  color VARCHAR(50),
+  duration FLOAT,
+  points JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

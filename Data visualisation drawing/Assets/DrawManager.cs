@@ -3,8 +3,49 @@ using UnityEngine;
 using UnityEngine.InputSystem; // Belangrijk!
 using UnityEngine.EventSystems;
 
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using System;
+
 public class DrawManagerInput : MonoBehaviour
 {
+    [System.Serializable]
+    public class StrokePayload
+    {
+        public string uid;
+        public string color;
+        public float duration;
+        public List<Vector3Serializable> points;
+
+    }
+
+    [System.Serializable]
+    public class Vector3Serializable
+    {
+        public float x;
+        public float y;
+        public float z;
+
+        public Vector3Serializable(Vector3 v)
+        {
+            x = v.x;
+            y = v.y;
+            z = v.z;
+        }
+    }
+
+
+    private string userId;
+    private string colorName = "Black";
+
+
+    void Start()
+    {
+        userId = System.Guid.NewGuid().ToString();
+        Debug.Log($"User ID: {userId}");
+    }
+
     [Header("References")]
     public Camera cam;
     public Material lineMaterial;
@@ -45,35 +86,33 @@ public class DrawManagerInput : MonoBehaviour
             DrawStroke();
     }
 
-void StartStroke()
-{
-    isDrawing = true;
+    void StartStroke()
+    {
+        isDrawing = true;
 
-    // Maak nieuwe lijn
-    currentLine = new GameObject("Line").AddComponent<LineRenderer>();
+        // Maak nieuwe lijn
+        currentLine = new GameObject("Line").AddComponent<LineRenderer>();
 
-    // Uniek materiaal per lijn
-    currentLine.material = new Material(lineMaterial);
+        // Uniek materiaal per lijn
+        currentLine.material = new Material(lineMaterial);
 
-    // Breedte
-    currentLine.startWidth = lineWidth;
-    currentLine.endWidth = lineWidth;
+        // Breedte
+        currentLine.startWidth = lineWidth;
+        currentLine.endWidth = lineWidth;
 
-    // Gebruik gradient voor kleur
-    Gradient grad = new Gradient();
-    grad.SetKeys(
-        new GradientColorKey[] { new GradientColorKey(drawColor, 0f), new GradientColorKey(drawColor, 1f) },
-        new GradientAlphaKey[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) }
-    );
-    currentLine.colorGradient = grad;
+        // Gebruik gradient voor kleur
+        Gradient grad = new Gradient();
+        grad.SetKeys(
+            new GradientColorKey[] { new GradientColorKey(drawColor, 0f), new GradientColorKey(drawColor, 1f) },
+            new GradientAlphaKey[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) }
+        );
+        currentLine.colorGradient = grad;
 
-    // Puntenlijst reset
-    currentLine.positionCount = 0;
-    points.Clear();
-    strokeStartTime = Time.time;
-}
-
-
+        // Puntenlijst reset
+        currentLine.positionCount = 0;
+        points.Clear();
+        strokeStartTime = Time.time;
+    }
 
 
     void DrawStroke()
@@ -103,6 +142,7 @@ void StartStroke()
                 points = new List<Vector3>(points)
             };
             strokes.Add(stroke);
+            SendStrokeData(stroke);
             Debug.Log($"Stroke saved: {stroke.points.Count} points, duration {stroke.duration:F2}s");
         }
     }
@@ -116,23 +156,56 @@ void StartStroke()
     }
 
     // --- UI kleurkeuze ---
-    public void SetColor(string colorName)
+    public void SetColor(string newColorName)
     {
-        switch (colorName)
+        colorName = newColorName; // 👈 sla op welke kleur gekozen werd
+
+        switch (newColorName)
         {
             case "Red": drawColor = Color.red; break;
             case "Green": drawColor = Color.green; break;
             case "Blue": drawColor = Color.blue; break;
             case "Black": drawColor = Color.black; break;
             case "White": drawColor = Color.white; break;
-
             default: drawColor = Color.black; break;
         }
 
-        Debug.Log($"Brush color set to: {drawColor}");
+        Debug.Log($"Brush color set to: {drawColor} ({colorName})");
 
-        // Verwijder selectie van de button
+        // Deselecteer UI button (optioneel)
         EventSystem.current.SetSelectedGameObject(null);
+    }
+
+
+
+    async void SendStrokeData(StrokeData stroke)
+    {
+        var serializedPoints = stroke.points.ConvertAll(p => new Vector3Serializable(p));
+
+        StrokePayload payload = new StrokePayload
+        {
+            uid = userId,
+            color = colorName,
+            duration = stroke.duration,
+            points = serializedPoints
+        };
+
+        string json = JsonUtility.ToJson(payload);
+        Debug.Log("📤 Sending JSON: " + json);
+
+        using (HttpClient client = new HttpClient())
+        {
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await client.PostAsync("http://127.0.0.1:5000/api/strokes", content);
+                Debug.Log($"Stroke data sent: {response.StatusCode}");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Error sending data: {e.Message}");
+            }
+        }
     }
 
 }
