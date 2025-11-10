@@ -23,23 +23,22 @@ app.get("/", (req, res) => {
 
 //receive Unity-data
 app.post("/api/strokes", async (req, res) => {
+	console.log("Received stroke data:", req.body); // Log incoming data
 	try {
 		const { uid, color, duration, points } = req.body;
 		if (!uid || !color || !points) {
 			return res.status(400).send("Missing required fields");
 		}
-
 		await pool.query("INSERT INTO strokes (uid, color, duration, points) VALUES ($1, $2, $3, $4)", [uid, color, duration, JSON.stringify(points)]);
-
+		console.log("Data saved"); // Log success
 		res.status(200).send("Data saved");
 	} catch (err) {
-		console.error(err);
+		console.error("Error saving data:", err); // Log errors
 		res.status(500).send("Database error");
 	}
 });
 
 const PORT = 5000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+	console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
 });
-

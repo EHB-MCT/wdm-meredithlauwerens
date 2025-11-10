@@ -198,8 +198,9 @@ public class DrawManagerInput : MonoBehaviour
             try
             {
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                HttpResponseMessage response = await client.PostAsync("http://127.0.0.1:5000/api/strokes", content);
-                Debug.Log($"Stroke data sent: {response.StatusCode}");
+                HttpResponseMessage response = await client.PostAsync("http://localhost:5000/api/strokes", content);
+                string responseBody = await response.Content.ReadAsStringAsync();
+                Debug.Log($"Stroke data sent: {response.StatusCode}, Response: {responseBody}");
             }
             catch (System.Exception e)
             {
@@ -207,6 +208,7 @@ public class DrawManagerInput : MonoBehaviour
             }
         }
     }
+
 
 }
 
