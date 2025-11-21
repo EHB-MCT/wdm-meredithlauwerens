@@ -23,13 +23,16 @@ app.get("/", (req, res) => {
 
 //receive Unity-data
 app.post("/api/strokes", async (req, res) => {
-	console.log("Received stroke data:", req.body); // Log incoming data
 	try {
 		const { uid, color, duration, points } = req.body;
 		if (!uid || !color || !points) {
 			return res.status(400).send("Missing required fields");
 		}
+
+		const roundedDuration = Number(duration.toFixed(2)); // 👈 Rond naar 2 decimalen
+
 		await pool.query("INSERT INTO strokes (uid, color, duration, points) VALUES ($1, $2, $3, $4)", [uid, color, duration, JSON.stringify(points)]);
+		console.log(`Saved stroke: uid=${uid}, color=${color}, duration=${roundedDuration}, points=${points.length}`);
 		console.log("Data saved"); // Log success
 		res.status(200).send("Data saved");
 	} catch (err) {
