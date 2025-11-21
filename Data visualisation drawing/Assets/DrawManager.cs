@@ -15,7 +15,7 @@ public class DrawManagerInput : MonoBehaviour
     {
         public string uid;
         public string color;
-        public float duration;
+        public double duration;
         public List<Vector3Serializable> points;
 
     }
@@ -37,7 +37,7 @@ public class DrawManagerInput : MonoBehaviour
     public class DrawingPayload //all strokes in 1 package
     {
         public string uid;
-        public float totalDuration;
+        public double totalDuration;
         public List<StrokePayload> strokes;
     }
 
@@ -237,7 +237,7 @@ public class DrawManagerInput : MonoBehaviour
             {
                 uid = userId,
                 color = s.colorName,
-                duration = (float)Math.Round(s.duration, 2),
+                duration = Math.Round(s.duration, 2),
                 points = serializedPoints
             });
         }
@@ -251,7 +251,7 @@ public class DrawManagerInput : MonoBehaviour
         DrawingPayload payload = new DrawingPayload
         {
             uid = userId,
-            totalDuration = (float)Math.Round(totalDuration, 2),
+            totalDuration = Math.Round(totalDuration, 2),
             strokes = strokePayloads
         };
 

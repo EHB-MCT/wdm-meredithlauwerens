@@ -32,7 +32,19 @@ app.post("/api/strokes", async (req, res) => {
 		const roundedDuration = Number(duration.toFixed(2)); //Roundup to 2 decimals
 
 		await pool.query("INSERT INTO strokes (uid, color, duration, points) VALUES ($1, $2, $3, $4)", [uid, color, roundedDuration, JSON.stringify(points)]);
-		console.log(`Saved stroke: uid=${uid}, color=${color}, duration=${roundedDuration}, points=${points.length}`);
+		// Rond totalDuration af op 2 decimalen
+
+		const drawingData = {
+			uid,
+			totalDuration: Number(totalDuration.toFixed(2)),
+			strokes: strokes.map((s) => ({
+				uid,
+				color: s.color,
+				duration: Number(s.duration.toFixed(2)),
+			})),
+		};
+
+		console.log("Full drawing JSON:\n", JSON.stringify(drawingData, null, 2));
 		console.log("Data saved"); // Log success
 		res.status(200).send("Data saved");
 	} catch (err) {
@@ -61,16 +73,28 @@ app.post("/api/drawing", async (req, res) => {
 			return res.status(400).send("Missing required fields");
 		}
 
-		console.log(` Full drawing received from user: ${uid}`);
-		console.log(`   Strokes: ${strokes.length}`);
-		console.log(`   Total duration: ${totalDuration}s`);
+		// Rond totalDuration af op 2 decimalen
+		const roundedDuration = Math.round(totalDuration * 100) / 100;
 
-		// Opslaan
-		await pool.query("INSERT INTO drawings (uid, total_duration, strokes) VALUES ($1, $2, $3)", [uid, totalDuration, JSON.stringify(strokes)]);
+		const drawingData = {
+			uid,
+			totalDuration: Number(totalDuration.toFixed(2)),
+			strokeCount: strokes.length,
+			strokes: strokes.map((s) => ({
+				uid,
+				color: s.color,
+				duration: Number(s.duration.toFixed(2)),
+			})),
+		};
+
+		console.log("Full drawing JSON:\n", JSON.stringify(drawingData, null, 2));
+
+		// Saving with rounded duration
+		await pool.query("INSERT INTO drawings (uid, total_duration, strokes) VALUES ($1, $2, $3)", [uid, roundedDuration, JSON.stringify(strokes)]);
 
 		res.status(200).send("Full drawing saved");
 	} catch (err) {
-		console.error(" Error:", err);
+		console.error("Error:", err);
 		res.status(500).send("Database error");
 	}
 });
