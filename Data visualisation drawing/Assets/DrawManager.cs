@@ -34,7 +34,21 @@ public class DrawManagerInput : MonoBehaviour
             z = v.z;
         }
     }
+    public class DrawingPayload //all strokes in 1 package
+    {
+        public string uid;
+        public float totalDuration;
+        public List<StrokePayload> strokes;
+    }
 
+    [System.Serializable]
+    public class StrokeData
+    {
+        public Color color;
+        public string colorName;
+        public float duration;
+        public List<Vector3> points;
+    }
 
     private string userId;
     private string colorName = "Black";
@@ -59,7 +73,7 @@ public class DrawManagerInput : MonoBehaviour
     private List<StrokeData> strokes = new();
     private float strokeStartTime;
 
-    // 🎨 Input callbacks (koppelen via PlayerInput)
+    //input callbacks (connecting via PlayerInput)
     public void OnDraw(InputAction.CallbackContext context)
     {
         if (context.started)
@@ -77,7 +91,7 @@ public class DrawManagerInput : MonoBehaviour
 
     public void OnRightClick(InputAction.CallbackContext context)
     {
-        Debug.Log("Right click detected (optioneel)");
+        Debug.Log("Right click detected");
     }
 
     void Update()
@@ -90,17 +104,17 @@ public class DrawManagerInput : MonoBehaviour
     {
         isDrawing = true;
 
-        // Maak nieuwe lijn
+        //make new line
         currentLine = new GameObject("Line").AddComponent<LineRenderer>();
 
-        // Uniek materiaal per lijn
+        //unique material per line
         currentLine.material = new Material(lineMaterial);
 
-        // Breedte
+        //width
         currentLine.startWidth = lineWidth;
         currentLine.endWidth = lineWidth;
 
-        // Gebruik gradient voor kleur
+        //use gradient for color
         Gradient grad = new Gradient();
         grad.SetKeys(
             new GradientColorKey[] { new GradientColorKey(drawColor, 0f), new GradientColorKey(drawColor, 1f) },
@@ -108,7 +122,7 @@ public class DrawManagerInput : MonoBehaviour
         );
         currentLine.colorGradient = grad;
 
-        // Puntenlijst reset
+        //points list reset
         currentLine.positionCount = 0;
         points.Clear();
         strokeStartTime = Time.time;
@@ -138,6 +152,7 @@ public class DrawManagerInput : MonoBehaviour
             StrokeData stroke = new()
             {
                 color = drawColor,
+                colorName = colorName,
                 duration = Time.time - strokeStartTime,
                 points = new List<Vector3>(points)
             };
@@ -147,18 +162,10 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
-    [System.Serializable]
-    public class StrokeData
-    {
-        public Color color;
-        public float duration;
-        public List<Vector3> points;
-    }
-
-    // --- UI kleurkeuze ---
+    //UI color choice
     public void SetColor(string newColorName)
     {
-        colorName = newColorName; // 👈 sla op welke kleur gekozen werd
+        colorName = newColorName; //save which color used
 
         switch (newColorName)
         {
@@ -172,7 +179,7 @@ public class DrawManagerInput : MonoBehaviour
 
         Debug.Log($"Brush color set to: {drawColor} ({colorName})");
 
-        // Deselecteer UI button (optioneel)
+        //deselect UI button
         EventSystem.current.SetSelectedGameObject(null);
     }
 
@@ -191,7 +198,7 @@ public class DrawManagerInput : MonoBehaviour
         };
 
         string json = JsonUtility.ToJson(payload);
-        Debug.Log("📤 Sending JSON: " + json);
+        Debug.Log("Sending JSON: " + json);
 
         using (HttpClient client = new HttpClient())
         {
@@ -209,6 +216,62 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
+    public void OnDone()
+    {
+        Debug.Log("Drawing finished. Sending full drawing...");
+        SendFullDrawing();
+    }
+
+    async void SendFullDrawing()
+    {
+        //convert all strokes to StrokePayload
+        List<StrokePayload> strokePayloads = new();
+
+        foreach (var s in strokes)
+        {
+            var serializedPoints = new List<Vector3Serializable>();
+            foreach (var p in s.points)
+                serializedPoints.Add(new Vector3Serializable(p));
+
+            strokePayloads.Add(new StrokePayload
+            {
+                uid = userId,
+                color = s.colorName,
+                duration = (float)Math.Round(s.duration, 2),
+                points = serializedPoints
+            });
+        }
+
+        //total time of drawing
+        float totalDuration = 0f;
+        foreach (var s in strokes)
+            totalDuration += s.duration;
+
+        //make master payload
+        DrawingPayload payload = new DrawingPayload
+        {
+            uid = userId,
+            totalDuration = (float)Math.Round(totalDuration, 2),
+            strokes = strokePayloads
+        };
+
+        string json = JsonUtility.ToJson(payload);
+        Debug.Log("Sending FULL drawing JSON:\n" + json);
+
+        using (HttpClient client = new HttpClient())
+        {
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await client.PostAsync("http://localhost:5000/api/drawing", content);
+                Debug.Log($"Full drawing sent: {response.StatusCode}");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("Error sending full drawing: " + e.Message);
+            }
+        }
+    }
 
 }
 
