@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem; // Belangrijk!
+using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 
 using System.Net.Http;
@@ -17,7 +17,6 @@ public class DrawManagerInput : MonoBehaviour
         public string color;
         public double duration;
         public List<Vector3Serializable> points;
-
     }
 
     [System.Serializable]
@@ -39,6 +38,8 @@ public class DrawManagerInput : MonoBehaviour
         public string uid;
         public double totalDuration;
         public List<StrokePayload> strokes;
+        public int eraseCount;
+        public int undoCount;
     }
 
     [System.Serializable]
@@ -48,11 +49,22 @@ public class DrawManagerInput : MonoBehaviour
         public string colorName;
         public float duration;
         public List<Vector3> points;
+        public LineRenderer lineRenderer;
+        public int eraseCount = 0; //total eraser used
+        public int undoCount = 0;  //total undo used
+        public GameObject lineObject; //to detect stroke to erase
     }
+
+   // Undo/Redo stacks
+    private Stack<ActionRecord> undoStack = new();
+    private Stack<ActionRecord> redoStack = new();
+    private int totalEraseCount = 0;
+    private int totalUndoCount = 0;
+
+    private bool isErasing = false;
 
     private string userId;
     private string colorName = "Black";
-
 
     void Start()
     {
@@ -76,6 +88,7 @@ public class DrawManagerInput : MonoBehaviour
     //input callbacks (connecting via PlayerInput)
     public void OnDraw(InputAction.CallbackContext context)
     {
+        if (isErasing) return;
         if (context.started)
             StartStroke();
         else if (context.performed)
@@ -83,6 +96,7 @@ public class DrawManagerInput : MonoBehaviour
         else if (context.canceled)
             EndStroke();
     }
+
 
     public void OnPosition(InputAction.CallbackContext context)
     {
@@ -96,12 +110,15 @@ public class DrawManagerInput : MonoBehaviour
 
     void Update()
     {
-        if (isDrawing)
+        if (!isErasing && isDrawing)
             DrawStroke();
+        if (isErasing)
+            CheckEraseClick();
     }
 
     void StartStroke()
     {
+        if (isErasing) return;
         isDrawing = true;
 
         //make new line
@@ -128,13 +145,13 @@ public class DrawManagerInput : MonoBehaviour
         strokeStartTime = Time.time;
     }
 
-
     void DrawStroke()
     {
         Ray ray = cam.ScreenPointToRay(pointerPos);
         if (Physics.Raycast(ray, out RaycastHit hit))
         {
             Vector3 hitPoint = hit.point;
+
             if (points.Count == 0 || Vector3.Distance(points[^1], hitPoint) > 0.01f)
             {
                 points.Add(hitPoint);
@@ -149,16 +166,47 @@ public class DrawManagerInput : MonoBehaviour
         isDrawing = false;
         if (points.Count > 1)
         {
-            StrokeData stroke = new()
+            StrokeData stroke = new StrokeData()
             {
                 color = drawColor,
                 colorName = colorName,
                 duration = Time.time - strokeStartTime,
-                points = new List<Vector3>(points)
+                points = new List<Vector3>(points),
+                lineRenderer = currentLine
             };
+
+            // create a parent object for that stroke
+            stroke.lineObject = new GameObject("Stroke");
+            currentLine.transform.parent = stroke.lineObject.transform;
             strokes.Add(stroke);
+
+            //add colliders to each segment of that stroke
+            AddCollidersToStroke(stroke);
+
             SendStrokeData(stroke);
             Debug.Log($"Stroke saved: {stroke.points.Count} points, duration {stroke.duration:F2}s");
+        }
+    }
+
+    void AddCollidersToStroke(StrokeData stroke)
+    {
+        for (int i = 1; i < stroke.points.Count; i++)
+        {
+            Vector3 start = stroke.points[i - 1];
+            Vector3 end = stroke.points[i];
+
+            GameObject segmentObj = new GameObject("LineSegment");
+            segmentObj.transform.parent = stroke.lineObject.transform;
+
+            CapsuleCollider col = segmentObj.AddComponent<CapsuleCollider>();
+            col.isTrigger = true;
+
+            //set direction and length
+            Vector3 dir = end - start;
+            col.transform.position = start + dir / 2;
+            col.transform.up = dir.normalized;
+            col.height = dir.magnitude;
+            col.radius = lineWidth / 2;
         }
     }
 
@@ -183,8 +231,6 @@ public class DrawManagerInput : MonoBehaviour
         EventSystem.current.SetSelectedGameObject(null);
     }
 
-
-
     async void SendStrokeData(StrokeData stroke)
     {
         var serializedPoints = stroke.points.ConvertAll(p => new Vector3Serializable(p));
@@ -194,7 +240,7 @@ public class DrawManagerInput : MonoBehaviour
             uid = userId,
             color = colorName,
             duration = stroke.duration,
-            points = serializedPoints
+            points = serializedPoints,
         };
 
         string json = JsonUtility.ToJson(payload);
@@ -238,7 +284,7 @@ public class DrawManagerInput : MonoBehaviour
                 uid = userId,
                 color = s.colorName,
                 duration = Math.Round(s.duration, 2),
-                points = serializedPoints
+                points = serializedPoints,
             });
         }
 
@@ -252,8 +298,11 @@ public class DrawManagerInput : MonoBehaviour
         {
             uid = userId,
             totalDuration = Math.Round(totalDuration, 2),
-            strokes = strokePayloads
+            strokes = strokePayloads,
+            eraseCount = totalEraseCount,
+            undoCount = totalUndoCount
         };
+
 
         string json = JsonUtility.ToJson(payload);
         Debug.Log("Sending FULL drawing JSON:\n" + json);
@@ -271,6 +320,77 @@ public class DrawManagerInput : MonoBehaviour
                 Debug.LogError("Error sending full drawing: " + e.Message);
             }
         }
+    }
+
+    public void SetEraserMode(bool eraseMode)
+    {
+        isErasing = eraseMode;
+        if (isErasing)
+            Debug.Log("Eraser enabled");
+        else
+            Debug.Log("Drawing mode enabled");
+    }
+
+    void CheckEraseClick()
+    {
+        if (!Mouse.current.leftButton.isPressed) return;
+
+        Ray ray = cam.ScreenPointToRay(Mouse.current.position.ReadValue());
+        if (Physics.Raycast(ray, out RaycastHit hit))
+        {
+            StrokeData strokeToErase = strokes.Find(s => s.lineObject != null && hit.collider != null && hit.collider.transform.IsChildOf(s.lineObject.transform));
+            if (strokeToErase != null)
+            {
+                Destroy(strokeToErase.lineObject);
+                strokes.Remove(strokeToErase);
+                totalEraseCount++;
+                Debug.Log($"Stroke erased, total strokes erased: {totalEraseCount}");
+            }
+        }
+    }
+
+     //action record for undo/redo
+    private class ActionRecord
+    {
+        public StrokeData Stroke;
+    }
+
+    public void Undo()
+    {
+        if (strokes.Count == 0) return;
+
+        StrokeData lastStroke = strokes[^1];
+        undoStack.Push(new ActionRecord
+        {
+            Stroke = lastStroke,
+        });
+
+        Destroy(lastStroke.lineRenderer.gameObject);
+        strokes.RemoveAt(strokes.Count - 1);
+
+        totalUndoCount++;
+        Debug.Log($"Undo performed, total undo count: {totalUndoCount}");    
+    }
+
+
+    public void Redo()
+    {
+        if (undoStack.Count == 0) return;
+
+        ActionRecord action = undoStack.Pop();
+        strokes.Add(action.Stroke);
+
+        //recover lineRenderer
+        LineRenderer lr = new GameObject("Line").AddComponent<LineRenderer>();
+        action.Stroke.lineRenderer = lr;
+        lr.material = new Material(lineMaterial);
+        lr.startWidth = lineWidth;
+        lr.endWidth = lineWidth;
+        lr.positionCount = action.Stroke.points.Count;
+        for (int i = 0; i < action.Stroke.points.Count; i++)
+            lr.SetPosition(i, action.Stroke.points[i]);
+
+        Debug.Log("Redo performed");
     }
 
 }

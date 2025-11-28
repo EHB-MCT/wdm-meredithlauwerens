@@ -25,30 +25,20 @@ app.get("/", (req, res) => {
 app.post("/api/strokes", async (req, res) => {
 	try {
 		const { uid, color, duration, points } = req.body;
+
 		if (!uid || !color || !points) {
 			return res.status(400).send("Missing required fields");
 		}
 
-		const roundedDuration = Number(duration.toFixed(2)); //Roundup to 2 decimals
+		const roundedDuration = Number(duration.toFixed(2));
 
 		await pool.query("INSERT INTO strokes (uid, color, duration, points) VALUES ($1, $2, $3, $4)", [uid, color, roundedDuration, JSON.stringify(points)]);
-		// Rond totalDuration af op 2 decimalen
 
-		const drawingData = {
-			uid,
-			totalDuration: Number(totalDuration.toFixed(2)),
-			strokes: strokes.map((s) => ({
-				uid,
-				color: s.color,
-				duration: Number(s.duration.toFixed(2)),
-			})),
-		};
+		console.log(`Saved stroke: uid=${uid}, color=${color}, duration=${roundedDuration}, points=${points.length}`);
 
-		console.log("Full drawing JSON:\n", JSON.stringify(drawingData, null, 2));
-		console.log("Data saved"); // Log success
 		res.status(200).send("Data saved");
 	} catch (err) {
-		console.error("Error saving data:", err); //log errors
+		console.error("Error saving data:", err);
 		res.status(500).send("Database error");
 	}
 });
@@ -67,19 +57,22 @@ app.post("/api/done", async (req, res) => {
 
 app.post("/api/drawing", async (req, res) => {
 	try {
-		const { uid, totalDuration, strokes } = req.body;
+		const { uid, totalDuration, strokes, eraseCount, undoCount } = req.body;
 
 		if (!uid || !strokes) {
 			return res.status(400).send("Missing required fields");
 		}
 
-		// Rond totalDuration af op 2 decimalen
-		const roundedDuration = Math.round(totalDuration * 100) / 100;
+		//check so that toFixed is never called on undefined
+		const safeDuration = Number(totalDuration) || 0;
+		const roundedDuration = Math.round(safeDuration * 100) / 100;
 
 		const drawingData = {
 			uid,
-			totalDuration: Number(totalDuration.toFixed(2)),
+			totalDuration: roundedDuration,
 			strokeCount: strokes.length,
+			eraseCount: eraseCount || 0,  //total eraser used
+			undoCount: undoCount || 0,     //total undo used
 			strokes: strokes.map((s) => ({
 				uid,
 				color: s.color,
@@ -87,10 +80,10 @@ app.post("/api/drawing", async (req, res) => {
 			})),
 		};
 
+
 		console.log("Full drawing JSON:\n", JSON.stringify(drawingData, null, 2));
 
-		// Saving with rounded duration
-		await pool.query("INSERT INTO drawings (uid, total_duration, strokes) VALUES ($1, $2, $3)", [uid, roundedDuration, JSON.stringify(strokes)]);
+		await pool.query("INSERT INTO drawings (uid, total_duration, strokes, erase_count, undo_count) VALUES ($1, $2, $3, $4, $5)", [uid, roundedDuration, JSON.stringify(strokes), eraseCount || 0, undoCount || 0]);
 
 		res.status(200).send("Full drawing saved");
 	} catch (err) {
