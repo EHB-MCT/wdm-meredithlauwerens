@@ -19,7 +19,7 @@ MonoBehaviour:
     width: 1536
     height: 868.8
   m_ShowMode: 4
-  m_Title: Hierarchy
+  m_Title: Game
   m_RootView: {fileID: 2}
   m_MinSize: {x: 875, y: 300}
   m_MaxSize: {x: 10000, y: 10000}
@@ -1063,7 +1063,7 @@ MonoBehaviour:
       scrollPos: {x: 0, y: 0}
       m_SelectedIDs: 
       m_LastClickedID: 0
-      m_ExpandedIDs: 16fbffffceab0000
+      m_ExpandedIDs: 16fbffff
       m_RenameOverlay:
         m_UserAcceptedRename: 0
         m_Name: 
@@ -1238,8 +1238,8 @@ MonoBehaviour:
     m_IsLocked: 0
   m_FolderTreeState:
     scrollPos: {x: 0, y: 0}
-    m_SelectedIDs: 00ad0000
-    m_LastClickedID: 44288
+    m_SelectedIDs: 3cad0000
+    m_LastClickedID: 44348
     m_ExpandedIDs: 000000003cad0000
     m_RenameOverlay:
       m_UserAcceptedRename: 0
@@ -1295,9 +1295,9 @@ MonoBehaviour:
       m_Icon: {fileID: 0}
       m_ResourceFile: 
   m_ListAreaState:
-    m_SelectedInstanceIDs: 56e8ffff
-    m_LastClickedInstanceID: -6058
-    m_HadKeyboardFocusLastEvent: 0
+    m_SelectedInstanceIDs: cc450000
+    m_LastClickedInstanceID: 17868
+    m_HadKeyboardFocusLastEvent: 1
     m_ExpandedInstanceIDs: c6230000f6dd0000c6dc000002dc00000aad00007a2f0400dc2c11009c5f0100da4001005c01040074c7000000000000
     m_RenameOverlay:
       m_UserAcceptedRename: 0

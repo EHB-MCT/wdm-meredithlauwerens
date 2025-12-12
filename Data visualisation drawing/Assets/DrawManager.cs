@@ -7,6 +7,10 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System;
+using UnityEngine.UI;
+using TMPro;
+
+
 
 public class DrawManagerInput : MonoBehaviour
 {
@@ -58,6 +62,9 @@ public class DrawManagerInput : MonoBehaviour
    // Undo/Redo stacks
     private Stack<ActionRecord> undoStack = new();
     private Stack<ActionRecord> redoStack = new();
+    public Button undoBtn;
+    public Button redoBtn;
+
     private int totalEraseCount = 0;
     private int totalUndoCount = 0;
 
@@ -70,7 +77,10 @@ public class DrawManagerInput : MonoBehaviour
     {
         userId = System.Guid.NewGuid().ToString();
         Debug.Log($"User ID: {userId}");
+        strokeWidthText = GameObject.Find("StrokeWidthText").GetComponent<TMP_Text>();
+        UpdateStrokeWidthText(); //call this to initialize the text
     }
+
 
     [Header("References")]
     public Camera cam;
@@ -85,10 +95,25 @@ public class DrawManagerInput : MonoBehaviour
     private List<StrokeData> strokes = new();
     private float strokeStartTime;
 
+    //cursor changes
+    [Header("Cursor Icons")]
+    public Texture2D penCursor;
+    public Texture2D eraserCursor;
+
+    private Vector2 cursorHotspot = Vector2.zero;
+
+    public float minLineWidth = 0.01f; //min allowed stroke width
+    public float maxLineWidth = 0.1f;  //max allowed stroke width
+    public float widthStep = 0.01f;    //amount to increase/decrease by
+    public TMP_Text strokeWidthText; //assign in the Unity Editor
+
+
+    
+
     //input callbacks (connecting via PlayerInput)
     public void OnDraw(InputAction.CallbackContext context)
     {
-        if (isErasing) return;
+        if (isErasing) return; //ignore draw input while erasing
         if (context.started)
             StartStroke();
         else if (context.performed)
@@ -114,11 +139,20 @@ public class DrawManagerInput : MonoBehaviour
             DrawStroke();
         if (isErasing)
             CheckEraseClick();
+
+        //enable/disable undo/redo buttons
+        if (undoBtn != null)
+            undoBtn.interactable = strokes.Count > 0;
+
+        if (redoBtn != null)
+            redoBtn.interactable = redoStack.Count > 0;
     }
+
+
 
     void StartStroke()
     {
-        if (isErasing) return;
+        if (isErasing) return; //not drawing when erasing mode
         isDrawing = true;
 
         //make new line
@@ -229,6 +263,10 @@ public class DrawManagerInput : MonoBehaviour
 
         //deselect UI button
         EventSystem.current.SetSelectedGameObject(null);
+
+        Cursor.SetCursor(penCursor, cursorHotspot, CursorMode.Auto);
+        isErasing = false;
+        SetCursorToPen();
     }
 
     async void SendStrokeData(StrokeData stroke)
@@ -322,13 +360,47 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
-    public void SetEraserMode(bool eraseMode)
+   public void SetEraserMode(bool eraseMode)
     {
         isErasing = eraseMode;
+        Debug.Log(isErasing ? "Eraser enabled" : "Drawing mode enabled");
+
         if (isErasing)
-            Debug.Log("Eraser enabled");
+        {
+            SetCursorToEraser();
+        }
         else
-            Debug.Log("Drawing mode enabled");
+        {
+            SetCursorToPen();
+        }
+    }
+
+
+    void SetCursorToPen()
+    {
+        if (penCursor == null)
+        {
+            Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+            return;
+        }
+        Vector2 hotspot = new Vector2(penCursor.width / 2f, penCursor.height / 2f);
+        Cursor.SetCursor(penCursor, hotspot, CursorMode.Auto);
+    }
+
+    void SetCursorToEraser()
+    {
+        if (eraserCursor == null)
+        {
+            Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+            return;
+        }
+        Vector2 hotspot = new Vector2(eraserCursor.width / 2f, eraserCursor.height / 2f);
+        Cursor.SetCursor(eraserCursor, hotspot, CursorMode.Auto);
+    }
+
+    void ResetCursor()
+    {
+        Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
     }
 
     void CheckEraseClick()
@@ -360,37 +432,59 @@ public class DrawManagerInput : MonoBehaviour
         if (strokes.Count == 0) return;
 
         StrokeData lastStroke = strokes[^1];
-        undoStack.Push(new ActionRecord
-        {
-            Stroke = lastStroke,
-        });
-
-        Destroy(lastStroke.lineRenderer.gameObject);
+        undoStack.Push(new ActionRecord { Stroke = lastStroke });
         strokes.RemoveAt(strokes.Count - 1);
-
+        lastStroke.lineObject.SetActive(false); //disable instead of destroy
+        redoStack.Push(new ActionRecord { Stroke = lastStroke });
         totalUndoCount++;
-        Debug.Log($"Undo performed, total undo count: {totalUndoCount}");    
+        Debug.Log($"Undo performed, total undo count: {totalUndoCount}");
     }
-
 
     public void Redo()
     {
-        if (undoStack.Count == 0) return;
+        if (redoStack.Count == 0) return;
 
-        ActionRecord action = undoStack.Pop();
+        ActionRecord action = redoStack.Pop();
         strokes.Add(action.Stroke);
-
-        //recover lineRenderer
-        LineRenderer lr = new GameObject("Line").AddComponent<LineRenderer>();
-        action.Stroke.lineRenderer = lr;
-        lr.material = new Material(lineMaterial);
-        lr.startWidth = lineWidth;
-        lr.endWidth = lineWidth;
-        lr.positionCount = action.Stroke.points.Count;
-        for (int i = 0; i < action.Stroke.points.Count; i++)
-            lr.SetPosition(i, action.Stroke.points[i]);
-
+        action.Stroke.lineObject.SetActive(true);
+        totalUndoCount--;
         Debug.Log("Redo performed");
+    }
+
+    public void OnPointerEnterButton()
+    {
+        ResetCursor(); //reset to default cursor
+    }
+
+    public void OnPointerExitButton()
+    {
+        if (isErasing)
+            SetCursorToEraser();
+        else
+            SetCursorToPen();
+    }
+
+    public void IncreaseStrokeWidth()
+    {
+        lineWidth = Mathf.Min(lineWidth + widthStep, maxLineWidth);
+        UpdateStrokeWidthText();
+        Debug.Log("Stroke width increased to: " + lineWidth);
+    }
+
+    public void DecreaseStrokeWidth()
+    {
+        Debug.Log("IncreaseStrokeWidth called");
+        lineWidth = Mathf.Max(lineWidth - widthStep, minLineWidth);
+        UpdateStrokeWidthText();
+        Debug.Log("Stroke width decreased to: " + lineWidth);
+    }
+
+
+
+    void UpdateStrokeWidthText()
+    {
+        if (strokeWidthText != null)
+            strokeWidthText.text = "Stroke Width: " + lineWidth.ToString("F2");
     }
 
 }
