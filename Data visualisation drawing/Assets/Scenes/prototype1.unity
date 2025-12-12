@@ -3666,12 +3666,12 @@ MonoBehaviour:
   cam: {fileID: 330585545}
   lineMaterial: {fileID: 2100000, guid: 60ccbe5ca6cabac48940dedbe463703f, type: 2}
   drawColor: {r: 0, g: 0, b: 0, a: 1}
-  lineWidth: 0.08
+  lineWidth: 0.1
   penCursor: {fileID: 2800000, guid: ef3661ed6f859684e9bcaf7505380944, type: 3}
   eraserCursor: {fileID: 2800000, guid: 3934c2b1beb589447a4b0224285be5a3, type: 3}
-  minLineWidth: 0.01
-  maxLineWidth: 0.1
-  widthStep: 0.01
+  minLineWidth: 0.05
+  maxLineWidth: 1
+  widthStep: 0.1
   strokeWidthText: {fileID: 44966207}
 --- !u!114 &1664519442
 MonoBehaviour:

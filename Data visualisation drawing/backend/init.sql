@@ -12,7 +12,10 @@ CREATE TABLE drawings (
     total_duration NUMERIC(10,2) NOT NULL,
     strokes JSONB NOT NULL,
     erase_count INT DEFAULT 0,
-    undo_count INT DEFAULT 0
+    undo_count INT DEFAULT 0,
+    redo_count INT DEFAULT 0,
+    increase_width_count INT DEFAULT 0,
+    decrease_width_count INT DEFAULT 0
 );
 
 

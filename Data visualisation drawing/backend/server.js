@@ -18,7 +18,7 @@ const pool = new Pool({
 
 //test endpoint
 app.get("/", (req, res) => {
-	res.send("✅ Drawing API is running!");
+	res.send("Drawing API is running!");
 });
 
 //receive Unity-data
@@ -57,7 +57,7 @@ app.post("/api/done", async (req, res) => {
 
 app.post("/api/drawing", async (req, res) => {
 	try {
-		const { uid, totalDuration, strokes, eraseCount, undoCount } = req.body;
+		const { uid, totalDuration, strokes, eraseCount, undoCount, redoCount, increaseWidthCount, decreaseWidthCount } = req.body;
 
 		if (!uid || !strokes) {
 			return res.status(400).send("Missing required fields");
@@ -71,8 +71,11 @@ app.post("/api/drawing", async (req, res) => {
 			uid,
 			totalDuration: roundedDuration,
 			strokeCount: strokes.length,
-			eraseCount: eraseCount || 0,  //total eraser used
-			undoCount: undoCount || 0,     //total undo used
+			eraseCount: eraseCount || 0, //total eraser used
+			undoCount: undoCount || 0, //total undo used
+			redoCount: redoCount || 0, //total redo used
+            increaseWidthCount: increaseWidthCount || 0, //total increase stroke width used
+            decreaseWidthCount: decreaseWidthCount || 0, //total decrease stroke width used
 			strokes: strokes.map((s) => ({
 				uid,
 				color: s.color,
@@ -83,7 +86,7 @@ app.post("/api/drawing", async (req, res) => {
 
 		console.log("Full drawing JSON:\n", JSON.stringify(drawingData, null, 2));
 
-		await pool.query("INSERT INTO drawings (uid, total_duration, strokes, erase_count, undo_count) VALUES ($1, $2, $3, $4, $5)", [uid, roundedDuration, JSON.stringify(strokes), eraseCount || 0, undoCount || 0]);
+		await pool.query("INSERT INTO drawings (uid, total_duration, strokes, erase_count, undo_count, redo_count, increase_width_count, decrease_width_count) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [uid, roundedDuration, JSON.stringify(strokes), eraseCount || 0, undoCount || 0, redoCount || 0, increaseWidthCount || 0, decreaseWidthCount || 0]);
 
 		res.status(200).send("Full drawing saved");
 	} catch (err) {

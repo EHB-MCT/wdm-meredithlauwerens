@@ -44,6 +44,9 @@ public class DrawManagerInput : MonoBehaviour
         public List<StrokePayload> strokes;
         public int eraseCount;
         public int undoCount;
+        public int redoCount;
+        public int increaseWidthCount;
+        public int decreaseWidthCount;
     }
 
     [System.Serializable]
@@ -107,6 +110,9 @@ public class DrawManagerInput : MonoBehaviour
     public float widthStep = 0.01f;    //amount to increase/decrease by
     public TMP_Text strokeWidthText; //assign in the Unity Editor
 
+    private int totalRedoCount = 0;
+    private int totalIncreaseWidthCount = 0;
+    private int totalDecreaseWidthCount = 0;
 
     
 
@@ -338,7 +344,10 @@ public class DrawManagerInput : MonoBehaviour
             totalDuration = Math.Round(totalDuration, 2),
             strokes = strokePayloads,
             eraseCount = totalEraseCount,
-            undoCount = totalUndoCount
+            undoCount = totalUndoCount,
+            redoCount = totalRedoCount,
+            increaseWidthCount = totalIncreaseWidthCount,
+            decreaseWidthCount = totalDecreaseWidthCount
         };
 
 
@@ -447,7 +456,7 @@ public class DrawManagerInput : MonoBehaviour
         ActionRecord action = redoStack.Pop();
         strokes.Add(action.Stroke);
         action.Stroke.lineObject.SetActive(true);
-        totalUndoCount--;
+        totalRedoCount++;
         Debug.Log("Redo performed");
     }
 
@@ -467,14 +476,15 @@ public class DrawManagerInput : MonoBehaviour
     public void IncreaseStrokeWidth()
     {
         lineWidth = Mathf.Min(lineWidth + widthStep, maxLineWidth);
+        totalIncreaseWidthCount++;
         UpdateStrokeWidthText();
         Debug.Log("Stroke width increased to: " + lineWidth);
     }
 
     public void DecreaseStrokeWidth()
     {
-        Debug.Log("IncreaseStrokeWidth called");
         lineWidth = Mathf.Max(lineWidth - widthStep, minLineWidth);
+        totalDecreaseWidthCount++;
         UpdateStrokeWidthText();
         Debug.Log("Stroke width decreased to: " + lineWidth);
     }
