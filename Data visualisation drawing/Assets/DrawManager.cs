@@ -42,6 +42,8 @@ public class DrawManagerInput : MonoBehaviour
         public string uid;
         public double totalDuration;
         public List<StrokePayload> strokes;
+        public int colorChangeCount;
+
         public int eraseCount;
         public int undoCount;
         public int redoCount;
@@ -75,6 +77,10 @@ public class DrawManagerInput : MonoBehaviour
 
     private string userId;
     private string colorName = "Black";
+
+    private int totalColorChangeCount = 0;
+    private string lastSelectedColor = null;
+
 
     void Start()
     {
@@ -251,9 +257,17 @@ public class DrawManagerInput : MonoBehaviour
     }
 
     //UI color choice
-    public void SetColor(string newColorName)
+   public void SetColor(string newColorName)
     {
-        colorName = newColorName; //save which color used
+        //count every color selection
+        totalColorChangeCount++;
+
+        //if you only want to count when color actually changes:
+        if (lastSelectedColor != newColorName)
+        totalColorChangeCount++;
+
+        lastSelectedColor = newColorName;
+        colorName = newColorName;
 
         switch (newColorName)
         {
@@ -265,15 +279,13 @@ public class DrawManagerInput : MonoBehaviour
             default: drawColor = Color.black; break;
         }
 
-        Debug.Log($"Brush color set to: {drawColor} ({colorName})");
+        Debug.Log($"Color changed to {newColorName}. Total changes: {totalColorChangeCount}");
 
-        //deselect UI button
         EventSystem.current.SetSelectedGameObject(null);
-
-        Cursor.SetCursor(penCursor, cursorHotspot, CursorMode.Auto);
-        isErasing = false;
         SetCursorToPen();
+        isErasing = false;
     }
+
 
     async void SendStrokeData(StrokeData stroke)
     {
@@ -343,6 +355,7 @@ public class DrawManagerInput : MonoBehaviour
             uid = userId,
             totalDuration = Math.Round(totalDuration, 2),
             strokes = strokePayloads,
+            colorChangeCount = totalColorChangeCount,
             eraseCount = totalEraseCount,
             undoCount = totalUndoCount,
             redoCount = totalRedoCount,

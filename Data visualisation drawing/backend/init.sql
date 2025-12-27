@@ -11,6 +11,7 @@ CREATE TABLE drawings (
     uid TEXT NOT NULL,
     total_duration NUMERIC(10,2) NOT NULL,
     strokes JSONB NOT NULL,
+    color_change_count INT DEFAULT 0,
     erase_count INT DEFAULT 0,
     undo_count INT DEFAULT 0,
     redo_count INT DEFAULT 0,
