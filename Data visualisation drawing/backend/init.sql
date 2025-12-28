@@ -19,5 +19,14 @@ CREATE TABLE drawings (
     decrease_width_count INT DEFAULT 0
 );
 
+CREATE TABLE topic_drawings (
+    id SERIAL PRIMARY KEY,
+    uid TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    used_reference BOOLEAN NOT NULL,
+    strokes JSONB NOT NULL
+);
+
+
 
 

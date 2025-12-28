@@ -9,11 +9,35 @@ using System.Threading.Tasks;
 using System;
 using UnityEngine.UI;
 using TMPro;
+using System.Linq;
 
 
 
 public class DrawManagerInput : MonoBehaviour
 {
+    [System.Serializable]
+
+    public class TopicDrawingData
+    {
+        public string topic;
+        public bool usedReference;
+        public DrawingPayload drawing;  //never null
+    }
+
+    public class SessionPayload
+    {
+        public string uid;
+        public List<DrawManagerInput.TopicDrawingData> session;
+    }
+
+    public List<string> topics = new List<string> { "Frog", "Cat", "Tree", "Car", "Dino" };
+    private int currentTopicIndex = 0;
+    private List<TopicDrawingData> sessionData = new List<TopicDrawingData>();
+
+    private bool withReference = false; //user choice for current topic
+    public Image referenceImageDisplay;  //where the reference image shows
+    public List<Sprite> referenceSprites; //reference images for topics
+
     [System.Serializable]
     public class StrokePayload
     {
@@ -37,6 +61,8 @@ public class DrawManagerInput : MonoBehaviour
             z = v.z;
         }
     }
+
+    [System.Serializable]
     public class DrawingPayload //all strokes in 1 package
     {
         public string uid;
@@ -78,8 +104,11 @@ public class DrawManagerInput : MonoBehaviour
     private string userId;
     private string colorName = "Black";
 
-    private int totalColorChangeCount = 0;
-    private string lastSelectedColor = null;
+    //private int totalColorChangeCount = 0;
+    //private string lastSelectedColor = null;
+    private string lastColorName = "Black";
+    private int colorChangeCount = 0;
+
 
 
     void Start()
@@ -88,6 +117,7 @@ public class DrawManagerInput : MonoBehaviour
         Debug.Log($"User ID: {userId}");
         strokeWidthText = GameObject.Find("StrokeWidthText").GetComponent<TMP_Text>();
         UpdateStrokeWidthText(); //call this to initialize the text
+        PromptReferenceChoice();
     }
 
 
@@ -119,19 +149,156 @@ public class DrawManagerInput : MonoBehaviour
     private int totalRedoCount = 0;
     private int totalIncreaseWidthCount = 0;
     private int totalDecreaseWidthCount = 0;
+    private bool canDraw = false;
 
-    
 
-    //input callbacks (connecting via PlayerInput)
+    public ReferenceChoiceUI referenceChoiceUI;
+
+    public void PromptReferenceChoice()
+    {
+        referenceChoiceUI.ShowTopic(topics[currentTopicIndex]);
+    }
+
+
+   public void ShowReference(bool useReference)
+    {
+        withReference = useReference;
+        canDraw = true;
+
+        if (useReference)
+        {
+            referenceImageDisplay.sprite = referenceSprites[currentTopicIndex];
+            referenceImageDisplay.color = Color.white; 
+            referenceImageDisplay.gameObject.SetActive(true);
+            Debug.Log("Reference sprite: " + referenceSprites[currentTopicIndex].name);
+        }
+        else
+        {
+            referenceImageDisplay.gameObject.SetActive(false);
+        }
+        StartDrawingTopic();
+    }
+
+
+    void StartDrawingTopic()
+    {
+        strokes.Clear(); //clear previous strokes
+        colorChangeCount = 0;
+        totalEraseCount = 0;
+        totalUndoCount = 0;
+        totalRedoCount = 0;
+        totalIncreaseWidthCount = 0;
+        totalDecreaseWidthCount = 0;
+
+        Debug.Log("Topic started: " + topics[currentTopicIndex] + ", Reference: " + withReference);
+        ResetTopicStats();
+    }
+
     public void OnDraw(InputAction.CallbackContext context)
     {
-        if (isErasing) return; //ignore draw input while erasing
+        if (!canDraw) return;
+        if (isErasing) return;
+
         if (context.started)
             StartStroke();
         else if (context.performed)
             isDrawing = true;
         else if (context.canceled)
             EndStroke();
+    }
+
+
+    public void OnDone()
+    {
+        if (currentTopicIndex >= topics.Count)
+        {
+            Debug.LogWarning("No more topics left.");
+            return;
+        }
+
+        // Always create a DrawingPayload, even if there are no strokes
+        DrawingPayload drawingPayload = CollectDrawingPayload();
+
+        // Create a new TopicDrawingData object
+        TopicDrawingData topicData = new TopicDrawingData
+        {
+            topic = topics[currentTopicIndex],
+            usedReference = withReference,
+            drawing = drawingPayload
+        };
+
+        // Add the topic data to the session
+        sessionData.Add(topicData);
+
+        // Clear the current drawing from the scene
+        ClearCurrentDrawing();
+
+        // Move to the next topic
+        currentTopicIndex++;
+
+        if (currentTopicIndex < topics.Count)
+        {
+            // Prompt the next topic reference choice
+            PromptReferenceChoice();
+        }
+        else
+        {
+            Debug.Log("All topics completed. Sending session data...");
+            SendFullSessionData();
+        }
+    }
+
+
+    DrawingPayload CollectDrawingPayload()
+    {
+        return new DrawingPayload
+        {
+            uid = userId,
+            totalDuration = strokes.Sum(s => s.duration),
+            strokes = strokes.Count > 0
+                        ? strokes.Select(s => new StrokePayload
+                            {
+                                uid = userId,
+                                color = s.colorName,
+                                duration = s.duration,
+                                points = s.points.Select(p => new Vector3Serializable(p)).ToList()
+                            }).ToList()
+                        : new List<StrokePayload>(),  // empty list if no strokes
+            colorChangeCount = colorChangeCount,
+            eraseCount = totalEraseCount,
+            undoCount = totalUndoCount,
+            redoCount = totalRedoCount,
+            increaseWidthCount = totalIncreaseWidthCount,
+            decreaseWidthCount = totalDecreaseWidthCount
+        };
+    }
+
+
+
+    async void SendFullSessionData()
+    {
+        SessionPayload payload = new SessionPayload
+        {
+            uid = userId,
+            session = sessionData
+        };
+
+        string json = JsonUtility.ToJson(payload);
+        Debug.Log("Sending session JSON:\n" + json);
+
+        using (HttpClient client = new HttpClient())
+        {
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await client.PostAsync("http://localhost:5000/api/session", content);
+                Debug.Log("Session data sent. Status: " + response.StatusCode);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("Error sending session data: " + e.Message);
+            }
+        }
     }
 
 
@@ -257,16 +424,15 @@ public class DrawManagerInput : MonoBehaviour
     }
 
     //UI color choice
-   public void SetColor(string newColorName)
+    public void SetColor(string newColorName)
     {
-        //count every color selection
-        totalColorChangeCount++;
+        //only count if color REALLY changed
+        if (newColorName != lastColorName)
+        {
+            colorChangeCount++;
+            lastColorName = newColorName;
+        }
 
-        //if you only want to count when color actually changes:
-        if (lastSelectedColor != newColorName)
-        totalColorChangeCount++;
-
-        lastSelectedColor = newColorName;
         colorName = newColorName;
 
         switch (newColorName)
@@ -279,13 +445,12 @@ public class DrawManagerInput : MonoBehaviour
             default: drawColor = Color.black; break;
         }
 
-        Debug.Log($"Color changed to {newColorName}. Total changes: {totalColorChangeCount}");
+        Debug.Log($"Color changed to {newColorName}. Total changes: {colorChangeCount}");
 
         EventSystem.current.SetSelectedGameObject(null);
-        SetCursorToPen();
         isErasing = false;
+        SetCursorToPen();
     }
-
 
     async void SendStrokeData(StrokeData stroke)
     {
@@ -316,12 +481,6 @@ public class DrawManagerInput : MonoBehaviour
                 Debug.LogError($"Error sending data: {e.Message}");
             }
         }
-    }
-
-    public void OnDone()
-    {
-        Debug.Log("Drawing finished. Sending full drawing...");
-        SendFullDrawing();
     }
 
     async void SendFullDrawing()
@@ -355,7 +514,7 @@ public class DrawManagerInput : MonoBehaviour
             uid = userId,
             totalDuration = Math.Round(totalDuration, 2),
             strokes = strokePayloads,
-            colorChangeCount = totalColorChangeCount,
+            colorChangeCount = colorChangeCount,
             eraseCount = totalEraseCount,
             undoCount = totalUndoCount,
             redoCount = totalRedoCount,
@@ -509,6 +668,33 @@ public class DrawManagerInput : MonoBehaviour
         if (strokeWidthText != null)
             strokeWidthText.text = "Stroke Width: " + lineWidth.ToString("F2");
     }
+
+    void ClearCurrentDrawing()
+    {
+        foreach (var stroke in strokes)
+        {
+            if (stroke.lineObject != null)
+                Destroy(stroke.lineObject);
+        }
+
+        strokes.Clear();
+        undoStack.Clear();
+        redoStack.Clear();
+
+        isDrawing = false;
+    }
+
+    void ResetTopicStats()
+    {
+        colorChangeCount = 0;
+        totalEraseCount = 0;
+        totalUndoCount = 0;
+        totalRedoCount = 0;
+        totalIncreaseWidthCount = 0;
+        totalDecreaseWidthCount = 0;
+    }
+
+
 
 }
 
