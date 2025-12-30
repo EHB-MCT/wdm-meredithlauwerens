@@ -3,7 +3,7 @@ This project is a Unity-based drawing experiment tool that tracks user drawing b
 (WMD: weapon of math destruction)
 
 ## Features
-Unity client
+### Unity client
 - Users are assigned a unique ID (UID) each session
 - Supports drawing with multiple strokes and colors
 - Tracks:
@@ -15,14 +15,14 @@ Unity client
     - Stroke width changes
 - Sends drawing data to a PostgreSQL backend via REST API
 
-Backend(Node.js + Express)
+### Backend(Node.js + Express)
 - Stores drawing data in PostgreSQL
 - Provides endpoints to:
     - Receive strokes, drawings, and sessions from Unity
     - Fetch aggregated statistics per user
     - Fetch per-topic stroke, color, and bounds data for dashboard charts
 
-Admin dashboard (HTML + Chart.js)
+### Admin dashboard (HTML + Chart.js)
 - View user-specific drawing statistics:
     - Average duration per drawing
     - Undo/erase behavior
