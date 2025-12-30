@@ -44,7 +44,7 @@ public class DrawManagerInput : MonoBehaviour
         public string uid;
         public string color;
         public double duration;
-        public List<Vector3Serializable> points;
+        public BoundingBox bounds;
     }
 
     [System.Serializable]
@@ -90,6 +90,30 @@ public class DrawManagerInput : MonoBehaviour
         public GameObject lineObject; //to detect stroke to erase
     }
 
+    [System.Serializable]
+    public class BoundingBox
+    {
+        public float minX, maxX;
+        public float minY, maxY;
+        public float minZ, maxZ;
+
+        public BoundingBox(Vector3 min, Vector3 max)
+        {
+            minX = min.x; maxX = max.x;
+            minY = min.y; maxY = max.y;
+            minZ = min.z; maxZ = max.z;
+        }
+    }
+
+    [System.Serializable]
+    public class StrokePayloadBoundingBox
+    {
+        public string uid;
+        public string color;
+        public double duration;
+        public BoundingBox bounds;
+    }
+
    // Undo/Redo stacks
     private Stack<ActionRecord> undoStack = new();
     private Stack<ActionRecord> redoStack = new();
@@ -109,14 +133,31 @@ public class DrawManagerInput : MonoBehaviour
     private string lastColorName = "Black";
     private int colorChangeCount = 0;
 
+    BoundingBox ComputeBounds(List<Vector3> points)
+    {
+        Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
 
+        foreach (Vector3 p in points)
+        {
+            min = Vector3.Min(min, p);
+            max = Vector3.Max(max, p);
+        }
+
+        return new BoundingBox(min, max);
+    }
 
     void Start()
     {
+        // 1. Generate a new UID for this session
         userId = System.Guid.NewGuid().ToString();
-        Debug.Log($"User ID: {userId}");
+        Debug.Log($"New Session UID: {userId}");
+
+        // 2. UI initialization
         strokeWidthText = GameObject.Find("StrokeWidthText").GetComponent<TMP_Text>();
-        UpdateStrokeWidthText(); //call this to initialize the text
+        UpdateStrokeWidthText();
+
+        // 3. Start experiment flow
         PromptReferenceChoice();
     }
 
@@ -216,6 +257,8 @@ public class DrawManagerInput : MonoBehaviour
             return;
         }
 
+        SendFullDrawing();
+
         // Always create a DrawingPayload, even if there are no strokes
         DrawingPayload drawingPayload = CollectDrawingPayload();
 
@@ -261,7 +304,7 @@ public class DrawManagerInput : MonoBehaviour
                                 uid = userId,
                                 color = s.colorName,
                                 duration = s.duration,
-                                points = s.points.Select(p => new Vector3Serializable(p)).ToList()
+                                bounds = ComputeBounds(s.points)
                             }).ToList()
                         : new List<StrokePayload>(),  // empty list if no strokes
             colorChangeCount = colorChangeCount,
@@ -388,18 +431,19 @@ public class DrawManagerInput : MonoBehaviour
                 lineRenderer = currentLine
             };
 
-            // create a parent object for that stroke
             stroke.lineObject = new GameObject("Stroke");
             currentLine.transform.parent = stroke.lineObject.transform;
             strokes.Add(stroke);
 
-            //add colliders to each segment of that stroke
             AddCollidersToStroke(stroke);
 
-            SendStrokeData(stroke);
+            // Send bounding box data instead of all points
+            SendStrokeBoundingBox(stroke);
+
             Debug.Log($"Stroke saved: {stroke.points.Count} points, duration {stroke.duration:F2}s");
         }
     }
+
 
     void AddCollidersToStroke(StrokeData stroke)
     {
@@ -461,7 +505,7 @@ public class DrawManagerInput : MonoBehaviour
             uid = userId,
             color = colorName,
             duration = stroke.duration,
-            points = serializedPoints,
+            bounds = ComputeBounds(stroke.points)
         };
 
         string json = JsonUtility.ToJson(payload);
@@ -485,6 +529,7 @@ public class DrawManagerInput : MonoBehaviour
 
     async void SendFullDrawing()
     {
+        Debug.Log("🔥 SendFullDrawing CALLED for uid: " + userId);
         //convert all strokes to StrokePayload
         List<StrokePayload> strokePayloads = new();
 
@@ -499,7 +544,7 @@ public class DrawManagerInput : MonoBehaviour
                 uid = userId,
                 color = s.colorName,
                 duration = Math.Round(s.duration, 2),
-                points = serializedPoints,
+                bounds = ComputeBounds(s.points)
             });
         }
 
@@ -694,7 +739,47 @@ public class DrawManagerInput : MonoBehaviour
         totalDecreaseWidthCount = 0;
     }
 
+    async void SendStrokeBoundingBox(StrokeData stroke)
+    {
+        Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
 
+        foreach (Vector3 p in stroke.points)
+        {
+            if (p.x < min.x) min.x = p.x;
+            if (p.y < min.y) min.y = p.y;
+            if (p.z < min.z) min.z = p.z;
+
+            if (p.x > max.x) max.x = p.x;
+            if (p.y > max.y) max.y = p.y;
+            if (p.z > max.z) max.z = p.z;
+        }
+
+        StrokePayloadBoundingBox payload = new StrokePayloadBoundingBox
+        {
+            uid = userId,
+            color = stroke.colorName,
+            duration = stroke.duration,
+            bounds = new BoundingBox(min, max)
+        };
+
+        string json = JsonUtility.ToJson(payload);
+        Debug.Log("Sending stroke bounding box JSON: " + json);
+
+        using (var client = new HttpClient())
+        {
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await client.PostAsync("http://localhost:5000/api/strokes", content);
+                Debug.Log($"Stroke bounding box sent: {response.StatusCode}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("Error sending bounding box: " + e.Message);
+            }
+        }
+    }
 
 }
 

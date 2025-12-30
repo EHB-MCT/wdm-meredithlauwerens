@@ -16,6 +16,8 @@ const pool = new Pool({
 	connectionString: process.env.DATABASE_URL,
 });
 
+const round2 = (n) => Math.round(Number(n) * 100) / 100;
+
 //test endpoint
 app.get("/", (req, res) => {
 	res.send("Drawing API is running!");
@@ -24,17 +26,19 @@ app.get("/", (req, res) => {
 //receive Unity-data
 app.post("/api/strokes", async (req, res) => {
 	try {
-		const { uid, color, duration, points } = req.body;
+		const { uid, color, duration, bounds } = req.body;
 
-		if (!uid || !color || !points) {
+		if (!uid || !color || !bounds) {
 			return res.status(400).send("Missing required fields");
 		}
 
-		const roundedDuration = Number(duration.toFixed(2));
+		const roundedDuration = round2(duration);
 
-		await pool.query("INSERT INTO strokes (uid, color, duration, points) VALUES ($1, $2, $3, $4)", [uid, color, roundedDuration, JSON.stringify(points)]);
+		await pool.query("INSERT INTO strokes (uid, color, duration, bounds) VALUES ($1, $2, $3, $4)", [uid, color, roundedDuration, JSON.stringify(bounds)]);
 
-		console.log(`Saved stroke: uid=${uid}, color=${color}, duration=${roundedDuration}, points=${points.length}`);
+		const width = bounds.maxX - bounds.minX;
+		const height = bounds.maxY - bounds.minY;
+		console.log(`Saved stroke: uid=${uid}, color=${color}, duration=${roundedDuration}, width=${width}, height=${height}`);
 
 		res.status(200).send("Data saved");
 	} catch (err) {
@@ -56,73 +60,218 @@ app.post("/api/done", async (req, res) => {
 });
 
 app.post("/api/drawing", async (req, res) => {
-	try {
-		const { uid, totalDuration, strokes, colorChangeCount, eraseCount, undoCount, redoCount, increaseWidthCount, decreaseWidthCount } = req.body;
+  console.log("/api/drawing HIT");
 
-		if (!uid || !strokes) {
-			return res.status(400).send("Missing required fields");
-		}
+  const {
+    uid,
+    totalDuration,
+    strokes,
+    colorChangeCount,
+    eraseCount,
+    undoCount,
+    redoCount,
+    increaseWidthCount,
+    decreaseWidthCount
+  } = req.body;
 
-		//check so that toFixed is never called on undefined
-		const safeDuration = Number(totalDuration) || 0;
-		const roundedDuration = Math.round(safeDuration * 100) / 100;
+  const roundedTotalDuration = Math.round(totalDuration * 100) / 100;
 
-		const drawingData = {
-			uid,
-			totalDuration: roundedDuration,
-			strokeCount: strokes.length,
-			colorChangeCount: colorChangeCount || 0,
-			eraseCount: eraseCount || 0, //total eraser used
-			undoCount: undoCount || 0, //total undo used
-			redoCount: redoCount || 0, //total redo used
-            increaseWidthCount: increaseWidthCount || 0, //total increase stroke width used
-            decreaseWidthCount: decreaseWidthCount || 0, //total decrease stroke width used
-			strokes: strokes.map((s) => ({
-				uid,
-				color: s.color,
-				duration: Number(s.duration.toFixed(2)),
-			})),
-		};
+  const normalizedStrokes = (strokes || []).map(s => ({
+    x: s.x,
+    y: s.y,
+    t: s.timestamp
+  }));
 
+  try {
+    await pool.query(
+      `INSERT INTO drawings (
+        uid,
+        total_duration,
+        stroke_count,
+        strokes,
+        color_change_count,
+        erase_count,
+        undo_count,
+        redo_count,
+        increase_width_count,
+        decrease_width_count
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        uid,
+        roundedTotalDuration,
+        normalizedStrokes.length,
+        JSON.stringify(normalizedStrokes),
+        colorChangeCount || 0,
+        eraseCount || 0,
+        undoCount || 0,
+        redoCount || 0,
+        increaseWidthCount || 0,
+        decreaseWidthCount || 0
+      ]
+    );
 
-		console.log("Full drawing JSON:\n", JSON.stringify(drawingData, null, 2));
-
-		await pool.query("INSERT INTO drawings (uid, total_duration, strokes, color_change_count, erase_count, undo_count, redo_count, increase_width_count, decrease_width_count) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)", [uid, roundedDuration, JSON.stringify(strokes), colorChangeCount || 0, eraseCount || 0, undoCount || 0, redoCount || 0, increaseWidthCount || 0, decreaseWidthCount || 0]);
-
-		res.status(200).send("Full drawing saved");
-	} catch (err) {
-		console.error("Error:", err);
-		res.status(500).send("Database error");
-	}
+    console.log("DRAWING INSERTED for uid:", uid);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("DRAWING INSERT FAILED:", err);
+    res.sendStatus(500);
+  }
 });
 
+
 app.post("/api/session", async (req, res) => {
-    try {
-        const { uid, session } = req.body;
-        if (!uid || !session) {
-            console.warn("Missing uid or session in payload");
-            return res.status(400).send("Missing fields");
-        }
+	try {
+		const { uid, session } = req.body;
 
-        console.log("Received session data:", JSON.stringify(req.body, null, 2));
+		if (!uid || !session) {
+			console.warn("Missing uid or session in payload");
+			return res.status(400).send("Missing fields");
+		}
 
-		for (const topicData of session) {
+		const normalizedSession = session.map((topicData) => {
+			const rawStrokes = topicData.drawing?.strokes || [];
+
+			const normalizedStrokes = rawStrokes.map((s) => ({
+				uid,
+				color: s.color,
+				duration: round2(s.duration),
+				bounds: s.bounds || null,
+			}));
+
+			return {
+					...topicData,
+					drawing: topicData.drawing
+						? {
+							...topicData.drawing,
+							totalDuration: round2(topicData.drawing.totalDuration),
+							strokeCount: normalizedStrokes.length,
+							strokes: normalizedStrokes,
+						}
+						: null,
+					};
+
+		});
+
+		console.log("Received session data:\n", JSON.stringify({ uid, session: normalizedSession }, null, 2));
+
+		for (const topicData of normalizedSession) {
 			const strokes = topicData.drawing?.strokes || [];
-			await pool.query(
-				"INSERT INTO topic_drawings (uid, topic, used_reference, strokes) VALUES ($1, $2, $3, $4)",
-				[uid, topicData.topic, topicData.usedReference, JSON.stringify(strokes)]
-			);
+
+			await pool.query("INSERT INTO topic_drawings (uid, topic, used_reference, strokes) VALUES ($1, $2, $3, $4)", [uid, topicData.topic, topicData.usedReference, JSON.stringify(strokes)]);
+
 			if (!topicData.drawing || strokes.length === 0) {
 				console.warn(`Topic "${topicData.topic}" has no drawing data for user ${uid}.`);
 			}
 		}
 
+		res.status(200).send("Session saved");
+	} catch (err) {
+		console.error("Error saving session:", err);
+		res.status(500).send("Database error");
+	}
+});
 
-        res.status(200).send("Session saved");
-    } catch (err) {
-        console.error("Error saving session:", err);
-        res.status(500).send("Database error");
-    }
+/*CHARTS*/
+//get all users
+app.get("/api/admin/users", async (req, res) => {
+  const result = await pool.query(
+    "SELECT DISTINCT uid FROM topic_drawings"
+  );
+  res.json(result.rows);
+});
+
+
+//get all drawings for a user
+app.get("/api/admin/user/:uid", async (req, res) => {
+  const { uid } = req.params;
+
+  const drawings = await pool.query(
+    "SELECT * FROM drawings WHERE uid = $1 ORDER BY id",
+    [uid]
+  );
+
+  const topics = await pool.query(
+    "SELECT * FROM topic_drawings WHERE uid = $1",
+    [uid]
+  );
+
+  res.json({
+    drawings: drawings.rows,
+    topics: topics.rows
+  });
+});
+
+
+//aggregated statistics
+app.get("/api/admin/stats", async (req, res) => {
+  const result = await pool.query(`
+    SELECT
+      COUNT(DISTINCT uid) as users,
+      AVG(total_duration) as avg_duration,
+      AVG(stroke_count) as avg_strokes,
+      AVG(erase_count) as avg_erases,
+      AVG(undo_count) as avg_undos
+    FROM drawings
+  `);
+
+  res.json(result.rows[0]);
+});
+
+
+app.get("/api/admin/user/:uid/colors", async (req, res) => {
+  const { uid } = req.params;
+
+  const result = await pool.query(
+    `SELECT color, COUNT(*) AS count
+     FROM strokes
+     WHERE uid = $1
+     GROUP BY color`,
+    [uid]
+  );
+
+  res.json(result.rows);
+});
+
+
+app.get("/api/admin/user/:uid/strokes-per-topic", async (req, res) => {
+  const { uid } = req.params;
+
+  const result = await pool.query(
+    `SELECT topic, jsonb_array_length(strokes) AS stroke_count
+     FROM topic_drawings
+     WHERE uid = $1`,
+    [uid]
+  );
+
+  res.json(result.rows);
+});
+
+
+app.get("/api/admin/user/:uid/bounds", async (req, res) => {
+  const { uid } = req.params;
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        topic,
+        SUM(
+          ((stroke->'bounds'->>'maxX')::float - (stroke->'bounds'->>'minX')::float)
+          *
+          ((stroke->'bounds'->>'maxY')::float - (stroke->'bounds'->>'minY')::float)
+        ) AS total_area
+      FROM topic_drawings,
+      LATERAL jsonb_array_elements(strokes) AS stroke
+      WHERE uid = $1
+      GROUP BY topic
+      ORDER BY topic
+    `, [uid]);
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error("Error fetching bounds chart:", err);
+    res.status(500).send("Database error");
+  }
 });
 
 
