@@ -1,18 +1,22 @@
-using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
+using UnityEngine.UI;
+
 using UnityEngine.InputSystem;
+
 using UnityEngine.EventSystems;
 
+//for sending HTTP requests (sending drawing data to a server)
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+
+//standard C# utilities and collections
 using System;
-using UnityEngine.UI;
-using TMPro;
+using System.Collections.Generic;
 using System.Linq;
 
-
-
+/*DATA CLASSES*/
 public class DrawManagerInput : MonoBehaviour
 {
     [System.Serializable]
@@ -29,14 +33,6 @@ public class DrawManagerInput : MonoBehaviour
         public string uid;
         public List<DrawManagerInput.TopicDrawingData> session;
     }
-
-    public List<string> topics = new List<string> { "Frog", "Cat", "Tree", "Car", "Dino" };
-    private int currentTopicIndex = 0;
-    private List<TopicDrawingData> sessionData = new List<TopicDrawingData>();
-
-    private bool withReference = false; //user choice for current topic
-    public Image referenceImageDisplay;  //where the reference image shows
-    public List<Sprite> referenceSprites; //reference images for topics
 
     [System.Serializable]
     public class StrokePayload
@@ -63,7 +59,8 @@ public class DrawManagerInput : MonoBehaviour
     }
 
     [System.Serializable]
-    public class DrawingPayload //all strokes in 1 package
+    //all strokes for 1 drawing
+    public class DrawingPayload 
     {
         public string uid;
         public double totalDuration;
@@ -91,6 +88,7 @@ public class DrawManagerInput : MonoBehaviour
     }
 
     [System.Serializable]
+    //encapsulates the 3D area of a stroke
     public class BoundingBox
     {
         public float minX, maxX;
@@ -114,7 +112,8 @@ public class DrawManagerInput : MonoBehaviour
         public BoundingBox bounds;
     }
 
-   // Undo/Redo stacks
+   //undo/redo stacks
+   //ActionRecord stores strokes for undo/redo operations
     private Stack<ActionRecord> undoStack = new();
     private Stack<ActionRecord> redoStack = new();
     public Button undoBtn;
@@ -125,43 +124,20 @@ public class DrawManagerInput : MonoBehaviour
 
     private bool isErasing = false;
 
-    private string userId;
+    private string userId; //GUID generated for session
     private string colorName = "Black";
-
-    //private int totalColorChangeCount = 0;
-    //private string lastSelectedColor = null;
     private string lastColorName = "Black";
     private int colorChangeCount = 0;
 
-    BoundingBox ComputeBounds(List<Vector3> points)
-    {
-        Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-        Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+    public List<string> topics = new List<string> { "Frog", "Cat", "Tree", "Car", "Dino" };
+    private int currentTopicIndex = 0;
+    private List<TopicDrawingData> sessionData = new List<TopicDrawingData>(); //sessionData stores all topics for sending later to backend
 
-        foreach (Vector3 p in points)
-        {
-            min = Vector3.Min(min, p);
-            max = Vector3.Max(max, p);
-        }
+    private bool withReference = false; //user choice for current topic
+    public Image referenceImageDisplay;  //where the reference image shows
+    public List<Sprite> referenceSprites; //reference images for topics
 
-        return new BoundingBox(min, max);
-    }
-
-    void Start()
-    {
-        // 1. Generate a new UID for this session
-        userId = System.Guid.NewGuid().ToString();
-        Debug.Log($"New Session UID: {userId}");
-
-        // 2. UI initialization
-        strokeWidthText = GameObject.Find("StrokeWidthText").GetComponent<TMP_Text>();
-        UpdateStrokeWidthText();
-
-        // 3. Start experiment flow
-        PromptReferenceChoice();
-    }
-
-
+    
     [Header("References")]
     public Camera cam;
     public Material lineMaterial;
@@ -192,15 +168,45 @@ public class DrawManagerInput : MonoBehaviour
     private int totalDecreaseWidthCount = 0;
     private bool canDraw = false;
 
-
     public ReferenceChoiceUI referenceChoiceUI;
 
+    BoundingBox ComputeBounds(List<Vector3> points)
+    {
+        Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+        foreach (Vector3 p in points)
+        {
+            min = Vector3.Min(min, p);
+            max = Vector3.Max(max, p);
+        }
+
+        return new BoundingBox(min, max);
+    }
+
+
+    void Start()
+    {
+        //generates a new UID for this session
+        userId = System.Guid.NewGuid().ToString();
+        Debug.Log($"New Session UID: {userId}");
+
+        //sets up UI for stroke width display
+        strokeWidthText = GameObject.Find("StrokeWidthText").GetComponent<TMP_Text>();
+        UpdateStrokeWidthText();
+
+        //starts experiment by prompting first topic reference choice
+        PromptReferenceChoice();
+    }
+
+    /*DRAWING FLOW*/
+    //shows UI for user to choose reference vs free draw
     public void PromptReferenceChoice()
     {
         referenceChoiceUI.ShowTopic(topics[currentTopicIndex]);
     }
 
-
+    //sets withReference and shows/hides reference image
    public void ShowReference(bool useReference)
     {
         withReference = useReference;
@@ -220,7 +226,7 @@ public class DrawManagerInput : MonoBehaviour
         StartDrawingTopic();
     }
 
-
+    //resets all counters and clears previous strokes for a new topic
     void StartDrawingTopic()
     {
         strokes.Clear(); //clear previous strokes
@@ -235,143 +241,21 @@ public class DrawManagerInput : MonoBehaviour
         ResetTopicStats();
     }
 
+    //handles input from mouse
     public void OnDraw(InputAction.CallbackContext context)
     {
         if (!canDraw) return;
         if (isErasing) return;
 
-        if (context.started)
+        if (context.started) //start new stroke
             StartStroke();
-        else if (context.performed)
+        else if (context.performed) //continue drawing
             isDrawing = true;
-        else if (context.canceled)
+        else if (context.canceled) //finish stroke
             EndStroke();
     }
 
-
-    public void OnDone()
-    {
-        if (currentTopicIndex >= topics.Count)
-        {
-            Debug.LogWarning("No more topics left.");
-            return;
-        }
-
-        SendFullDrawing();
-
-        // Always create a DrawingPayload, even if there are no strokes
-        DrawingPayload drawingPayload = CollectDrawingPayload();
-
-        // Create a new TopicDrawingData object
-        TopicDrawingData topicData = new TopicDrawingData
-        {
-            topic = topics[currentTopicIndex],
-            usedReference = withReference,
-            drawing = drawingPayload
-        };
-
-        // Add the topic data to the session
-        sessionData.Add(topicData);
-
-        // Clear the current drawing from the scene
-        ClearCurrentDrawing();
-
-        // Move to the next topic
-        currentTopicIndex++;
-
-        if (currentTopicIndex < topics.Count)
-        {
-            // Prompt the next topic reference choice
-            PromptReferenceChoice();
-        }
-        else
-        {
-            Debug.Log("All topics completed. Sending session data...");
-            SendFullSessionData();
-        }
-    }
-
-
-    DrawingPayload CollectDrawingPayload()
-    {
-        return new DrawingPayload
-        {
-            uid = userId,
-            totalDuration = strokes.Sum(s => s.duration),
-            strokes = strokes.Count > 0
-                        ? strokes.Select(s => new StrokePayload
-                            {
-                                uid = userId,
-                                color = s.colorName,
-                                duration = s.duration,
-                                bounds = ComputeBounds(s.points)
-                            }).ToList()
-                        : new List<StrokePayload>(),  // empty list if no strokes
-            colorChangeCount = colorChangeCount,
-            eraseCount = totalEraseCount,
-            undoCount = totalUndoCount,
-            redoCount = totalRedoCount,
-            increaseWidthCount = totalIncreaseWidthCount,
-            decreaseWidthCount = totalDecreaseWidthCount
-        };
-    }
-
-
-
-    async void SendFullSessionData()
-    {
-        SessionPayload payload = new SessionPayload
-        {
-            uid = userId,
-            session = sessionData
-        };
-
-        string json = JsonUtility.ToJson(payload);
-        Debug.Log("Sending session JSON:\n" + json);
-
-        using (HttpClient client = new HttpClient())
-        {
-            try
-            {
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await client.PostAsync("http://localhost:5000/api/session", content);
-                Debug.Log("Session data sent. Status: " + response.StatusCode);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("Error sending session data: " + e.Message);
-            }
-        }
-    }
-
-
-    public void OnPosition(InputAction.CallbackContext context)
-    {
-        pointerPos = context.ReadValue<Vector2>();
-    }
-
-    public void OnRightClick(InputAction.CallbackContext context)
-    {
-        Debug.Log("Right click detected");
-    }
-
-    void Update()
-    {
-        if (!isErasing && isDrawing)
-            DrawStroke();
-        if (isErasing)
-            CheckEraseClick();
-
-        //enable/disable undo/redo buttons
-        if (undoBtn != null)
-            undoBtn.interactable = strokes.Count > 0;
-
-        if (redoBtn != null)
-            redoBtn.interactable = redoStack.Count > 0;
-    }
-
-
-
+    //creates new LineRenderer and initializes stroke points
     void StartStroke()
     {
         if (isErasing) return; //not drawing when erasing mode
@@ -401,6 +285,7 @@ public class DrawManagerInput : MonoBehaviour
         strokeStartTime = Time.time;
     }
 
+    //adds points to line as user moves
     void DrawStroke()
     {
         Ray ray = cam.ScreenPointToRay(pointerPos);
@@ -417,6 +302,7 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
+    //finalizes stroke, calculates bounding box and stores stroke data
     void EndStroke()
     {
         isDrawing = false;
@@ -444,7 +330,8 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
-
+    /*STROKE MANAGEMENT*/
+    //adds colliders to strokes for erasing by click
     void AddCollidersToStroke(StrokeData stroke)
     {
         for (int i = 1; i < stroke.points.Count; i++)
@@ -467,7 +354,7 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
-    //UI color choice
+    //changes the drawing color and tracks color changes.
     public void SetColor(string newColorName)
     {
         //only count if color REALLY changed
@@ -496,6 +383,51 @@ public class DrawManagerInput : MonoBehaviour
         SetCursorToPen();
     }
 
+    //switch between drawing and erasing mode with cursor feedback
+    public void SetEraserMode(bool eraseMode)
+    {
+        isErasing = eraseMode;
+        Debug.Log(isErasing ? "Eraser enabled" : "Drawing mode enabled");
+
+        if (isErasing)
+        {
+            SetCursorToEraser();
+        }
+        else
+        {
+            SetCursorToPen();
+        }
+    }
+
+    /*UNDO/REDO*/
+    //disables last stroke and pushes it to redo stack
+    public void Undo()
+    {
+        if (strokes.Count == 0) return;
+
+        StrokeData lastStroke = strokes[^1];
+        undoStack.Push(new ActionRecord { Stroke = lastStroke });
+        strokes.RemoveAt(strokes.Count - 1);
+        lastStroke.lineObject.SetActive(false); //disable instead of destroy
+        redoStack.Push(new ActionRecord { Stroke = lastStroke });
+        totalUndoCount++;
+        Debug.Log($"Undo performed, total undo count: {totalUndoCount}");
+    }
+
+    //re-enables last undone stroke
+    public void Redo()
+    {
+        if (redoStack.Count == 0) return;
+
+        ActionRecord action = redoStack.Pop();
+        strokes.Add(action.Stroke);
+        action.Stroke.lineObject.SetActive(true);
+        totalRedoCount++;
+        Debug.Log("Redo performed");
+    }
+
+    /*SEND/BACKEND COMMUNICATION*/
+    //sends individual stroke data as JSON
     async void SendStrokeData(StrokeData stroke)
     {
         var serializedPoints = stroke.points.ConvertAll(p => new Vector3Serializable(p));
@@ -527,6 +459,50 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
+    //sends only bounding box info to reduce payload
+    async void SendStrokeBoundingBox(StrokeData stroke)
+    {
+        Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+        foreach (Vector3 p in stroke.points)
+        {
+            if (p.x < min.x) min.x = p.x;
+            if (p.y < min.y) min.y = p.y;
+            if (p.z < min.z) min.z = p.z;
+
+            if (p.x > max.x) max.x = p.x;
+            if (p.y > max.y) max.y = p.y;
+            if (p.z > max.z) max.z = p.z;
+        }
+
+        StrokePayloadBoundingBox payload = new StrokePayloadBoundingBox
+        {
+            uid = userId,
+            color = stroke.colorName,
+            duration = stroke.duration,
+            bounds = new BoundingBox(min, max)
+        };
+
+        string json = JsonUtility.ToJson(payload);
+        Debug.Log("Sending stroke bounding box JSON: " + json);
+
+        using (var client = new HttpClient())
+        {
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await client.PostAsync("http://localhost:5000/api/strokes", content);
+                Debug.Log($"Stroke bounding box sent: {response.StatusCode}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("Error sending bounding box: " + e.Message);
+            }
+        }
+    }
+
+    //sends all strokes of current topic to server
     async void SendFullDrawing()
     {
         Debug.Log("🔥 SendFullDrawing CALLED for uid: " + userId);
@@ -586,22 +562,60 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
-   public void SetEraserMode(bool eraseMode)
+    //sends all topics in session to /api/session endpoint
+    //uses HttpClient and JSON serialization (JsonUtility.ToJson)
+    async void SendFullSessionData()
     {
-        isErasing = eraseMode;
-        Debug.Log(isErasing ? "Eraser enabled" : "Drawing mode enabled");
+        SessionPayload payload = new SessionPayload
+        {
+            uid = userId,
+            session = sessionData
+        };
 
-        if (isErasing)
+        string json = JsonUtility.ToJson(payload);
+        Debug.Log("Sending session JSON:\n" + json);
+
+        using (HttpClient client = new HttpClient())
         {
-            SetCursorToEraser();
-        }
-        else
-        {
-            SetCursorToPen();
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await client.PostAsync("http://localhost:5000/api/session", content);
+                Debug.Log("Session data sent. Status: " + response.StatusCode);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("Error sending session data: " + e.Message);
+            }
         }
     }
 
+    /*STROKE WIDTH MANAGEMENT*/
+    //-> allows user to adjust line width, keeps counts for analytics
+    public void IncreaseStrokeWidth()
+    {
+        lineWidth = Mathf.Min(lineWidth + widthStep, maxLineWidth);
+        totalIncreaseWidthCount++;
+        UpdateStrokeWidthText();
+        Debug.Log("Stroke width increased to: " + lineWidth);
+    }
 
+    public void DecreaseStrokeWidth()
+    {
+        lineWidth = Mathf.Max(lineWidth - widthStep, minLineWidth);
+        totalDecreaseWidthCount++;
+        UpdateStrokeWidthText();
+        Debug.Log("Stroke width decreased to: " + lineWidth);
+    }
+
+    void UpdateStrokeWidthText()
+    {
+        if (strokeWidthText != null)
+            strokeWidthText.text = "Stroke Width: " + lineWidth.ToString("F2");
+    }
+
+    /*CURSOR MANAGEMENT*/
+    // --> updates cursor depending on drawing/erasing mode or when hovering UI buttons
     void SetCursorToPen()
     {
         if (penCursor == null)
@@ -629,6 +643,103 @@ public class DrawManagerInput : MonoBehaviour
         Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
     }
 
+    /*TOPIC COMPLETION*/
+    //called when user finishes a topic
+    public void OnDone()
+    {
+        if (currentTopicIndex >= topics.Count)
+        {
+            Debug.LogWarning("No more topics left.");
+            return;
+        }
+
+        SendFullDrawing();
+
+        //collects drawing payload, even if there are no strokes
+        DrawingPayload drawingPayload = CollectDrawingPayload();
+
+        //stores TopicDrawingData in sessionData.
+        TopicDrawingData topicData = new TopicDrawingData
+        {
+            topic = topics[currentTopicIndex],
+            usedReference = withReference,
+            drawing = drawingPayload
+        };
+
+        //add topic data to session
+        sessionData.Add(topicData);
+
+        //clear current drawing from scene
+        ClearCurrentDrawing();
+
+        //move to next topic
+        currentTopicIndex++;
+
+        if (currentTopicIndex < topics.Count)
+        {
+            //prompt next topic reference choice
+            PromptReferenceChoice();
+        }
+        else //sends full session if done
+        {
+            Debug.Log("All topics completed. Sending session data...");
+            SendFullSessionData();
+        }
+    }
+
+
+    DrawingPayload CollectDrawingPayload()
+    {
+        return new DrawingPayload
+        {
+            uid = userId,
+            totalDuration = strokes.Sum(s => s.duration),
+            strokes = strokes.Count > 0
+                        ? strokes.Select(s => new StrokePayload
+                            {
+                                uid = userId,
+                                color = s.colorName,
+                                duration = s.duration,
+                                bounds = ComputeBounds(s.points)
+                            }).ToList()
+                        : new List<StrokePayload>(),  // empty list if no strokes
+            colorChangeCount = colorChangeCount,
+            eraseCount = totalEraseCount,
+            undoCount = totalUndoCount,
+            redoCount = totalRedoCount,
+            increaseWidthCount = totalIncreaseWidthCount,
+            decreaseWidthCount = totalDecreaseWidthCount
+        };
+    }
+
+
+
+    public void OnPosition(InputAction.CallbackContext context)
+    {
+        pointerPos = context.ReadValue<Vector2>();
+    }
+
+    public void OnRightClick(InputAction.CallbackContext context)
+    {
+        Debug.Log("Right click detected");
+    }
+
+    void Update()
+    {
+        if (!isErasing && isDrawing)
+            DrawStroke();
+        if (isErasing)
+            CheckEraseClick();
+
+        //enable/disable undo/redo buttons
+        if (undoBtn != null)
+            undoBtn.interactable = strokes.Count > 0;
+
+        if (redoBtn != null)
+            redoBtn.interactable = redoStack.Count > 0;
+    }
+
+
     void CheckEraseClick()
     {
         if (!Mouse.current.leftButton.isPressed) return;
@@ -647,34 +758,10 @@ public class DrawManagerInput : MonoBehaviour
         }
     }
 
-     //action record for undo/redo
+    //action record for undo/redo
     private class ActionRecord
     {
         public StrokeData Stroke;
-    }
-
-    public void Undo()
-    {
-        if (strokes.Count == 0) return;
-
-        StrokeData lastStroke = strokes[^1];
-        undoStack.Push(new ActionRecord { Stroke = lastStroke });
-        strokes.RemoveAt(strokes.Count - 1);
-        lastStroke.lineObject.SetActive(false); //disable instead of destroy
-        redoStack.Push(new ActionRecord { Stroke = lastStroke });
-        totalUndoCount++;
-        Debug.Log($"Undo performed, total undo count: {totalUndoCount}");
-    }
-
-    public void Redo()
-    {
-        if (redoStack.Count == 0) return;
-
-        ActionRecord action = redoStack.Pop();
-        strokes.Add(action.Stroke);
-        action.Stroke.lineObject.SetActive(true);
-        totalRedoCount++;
-        Debug.Log("Redo performed");
     }
 
     public void OnPointerEnterButton()
@@ -688,30 +775,6 @@ public class DrawManagerInput : MonoBehaviour
             SetCursorToEraser();
         else
             SetCursorToPen();
-    }
-
-    public void IncreaseStrokeWidth()
-    {
-        lineWidth = Mathf.Min(lineWidth + widthStep, maxLineWidth);
-        totalIncreaseWidthCount++;
-        UpdateStrokeWidthText();
-        Debug.Log("Stroke width increased to: " + lineWidth);
-    }
-
-    public void DecreaseStrokeWidth()
-    {
-        lineWidth = Mathf.Max(lineWidth - widthStep, minLineWidth);
-        totalDecreaseWidthCount++;
-        UpdateStrokeWidthText();
-        Debug.Log("Stroke width decreased to: " + lineWidth);
-    }
-
-
-
-    void UpdateStrokeWidthText()
-    {
-        if (strokeWidthText != null)
-            strokeWidthText.text = "Stroke Width: " + lineWidth.ToString("F2");
     }
 
     void ClearCurrentDrawing()
@@ -737,48 +800,6 @@ public class DrawManagerInput : MonoBehaviour
         totalRedoCount = 0;
         totalIncreaseWidthCount = 0;
         totalDecreaseWidthCount = 0;
-    }
-
-    async void SendStrokeBoundingBox(StrokeData stroke)
-    {
-        Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-        Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
-
-        foreach (Vector3 p in stroke.points)
-        {
-            if (p.x < min.x) min.x = p.x;
-            if (p.y < min.y) min.y = p.y;
-            if (p.z < min.z) min.z = p.z;
-
-            if (p.x > max.x) max.x = p.x;
-            if (p.y > max.y) max.y = p.y;
-            if (p.z > max.z) max.z = p.z;
-        }
-
-        StrokePayloadBoundingBox payload = new StrokePayloadBoundingBox
-        {
-            uid = userId,
-            color = stroke.colorName,
-            duration = stroke.duration,
-            bounds = new BoundingBox(min, max)
-        };
-
-        string json = JsonUtility.ToJson(payload);
-        Debug.Log("Sending stroke bounding box JSON: " + json);
-
-        using (var client = new HttpClient())
-        {
-            try
-            {
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                HttpResponseMessage response = await client.PostAsync("http://localhost:5000/api/strokes", content);
-                Debug.Log($"Stroke bounding box sent: {response.StatusCode}");
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("Error sending bounding box: " + e.Message);
-            }
-        }
     }
 
 }

@@ -1,21 +1,22 @@
-//a simple express API that captures and stores Unity data in PostgreSQL
+//express API that captures and stores Unity data in PostgreSQL
 
 import express from "express";
-import bodyParser from "body-parser";
+import bodyParser from "body-parser"; //middleware to parse JSON request bodies
 import cors from "cors";
-import pkg from "pg";
+import pkg from "pg"; //PostgreSQL client for Node.js -> pool allows connection pooling for database queries
 
 const { Pool } = pkg;
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json()); //allows reading JSON data from incoming requests
 
 //database connection via environment variable
 const pool = new Pool({
 	connectionString: process.env.DATABASE_URL,
 });
 
+//rounds a number to 2 decimal places
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
 //test endpoint
@@ -23,7 +24,7 @@ app.get("/", (req, res) => {
 	res.send("Drawing API is running!");
 });
 
-//receive Unity-data
+//receive Unity stroke data
 app.post("/api/strokes", async (req, res) => {
 	try {
 		const { uid, color, duration, bounds } = req.body;
@@ -47,6 +48,8 @@ app.post("/api/strokes", async (req, res) => {
 	}
 });
 
+//receive completion signal
+//Unity can notify that the user has finished a drawing
 app.post("/api/done", async (req, res) => {
 	const { uid, done } = req.body;
 
@@ -59,6 +62,7 @@ app.post("/api/done", async (req, res) => {
 	res.status(200).send("Done received");
 });
 
+//full drawing data
 app.post("/api/drawing", async (req, res) => {
 	console.log("/api/drawing HIT");
 
@@ -66,6 +70,7 @@ app.post("/api/drawing", async (req, res) => {
 
 	const roundedTotalDuration = Math.round(totalDuration * 100) / 100;
 
+  //converts strokes into a normalized format with only x, y, timestamp
 	const normalizedStrokes = (strokes || []).map((s) => ({
 		x: s.x,
 		y: s.y,
@@ -97,6 +102,8 @@ app.post("/api/drawing", async (req, res) => {
 	}
 });
 
+//session data
+//receives all drawings for a user session (possibly multiple topics)
 app.post("/api/session", async (req, res) => {
 	try {
 		const { uid, session } = req.body;
@@ -106,9 +113,9 @@ app.post("/api/session", async (req, res) => {
 			return res.status(400).send("Missing fields");
 		}
 
+    //normalizes the strokes, rounds durations and counts strokes
 		const normalizedSession = session.map((topicData) => {
 			const rawStrokes = topicData.drawing?.strokes || [];
-
 			const normalizedStrokes = rawStrokes.map((s) => ({
 				uid,
 				color: s.color,
@@ -134,6 +141,7 @@ app.post("/api/session", async (req, res) => {
 		for (const topicData of normalizedSession) {
 			const strokes = topicData.drawing?.strokes || [];
 
+      //inserts each topic’s drawing into topic_drawings
 			await pool.query(
 				`INSERT INTO topic_drawings (uid, topic, used_reference, strokes, stroke_count)
    VALUES ($1, $2, $3, $4, $5)`,
@@ -152,7 +160,7 @@ app.post("/api/session", async (req, res) => {
 	}
 });
 
-/*CHARTS*/
+/*admin CHARTS*/
 //get all users
 app.get("/api/admin/users", async (req, res) => {
 	const result = await pool.query("SELECT DISTINCT uid FROM topic_drawings");
@@ -188,6 +196,7 @@ app.get("/api/admin/stats", async (req, res) => {
 	res.json(result.rows[0]);
 });
 
+//colors used by user
 app.get("/api/admin/user/:uid/colors", async (req, res) => {
 	const { uid } = req.params;
 
@@ -202,6 +211,7 @@ app.get("/api/admin/user/:uid/colors", async (req, res) => {
 	res.json(result.rows);
 });
 
+//strokes drawn by user per topic
 app.get("/api/admin/user/:uid/strokes-per-topic", async (req, res) => {
 	const { uid } = req.params;
 
@@ -215,6 +225,7 @@ app.get("/api/admin/user/:uid/strokes-per-topic", async (req, res) => {
 	res.json(result.rows);
 });
 
+//bounding areas (to know how 'big' the user has drawn)
 app.get("/api/admin/user/:uid/bounds", async (req, res) => {
 	const { uid } = req.params;
 
