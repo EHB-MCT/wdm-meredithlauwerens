@@ -116,3 +116,4 @@ MIT license
 - Adding reference images to game (ChatGPT): https://chatgpt.com/share/6953e281-5e0c-8011-80ef-a106946d6930
 - Fixing rounding duration error (ChatGPT): https://chatgpt.com/share/6953e299-33e0-8011-9c7a-a52c4ebb9642 
 - Creating admin dashboard with charts for data visualisation (ChatGPT): https://chatgpt.com/share/6953e2cf-c9ac-8011-abca-9c60a53c7924 
+- Data processing error (Mistral AI): https://chat.mistral.ai/chat/25392107-6936-49ad-b453-f9b3ef4e1f71 
