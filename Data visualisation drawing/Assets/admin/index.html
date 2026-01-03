@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<title>Drawing Admin Dashboard</title>
+		<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<h1>Admin Dashboard</h1>
+
+		<label>User:</label>
+		<select id="userSelect"></select>
+
+		<h2>Average Duration per Drawing</h2>
+		<canvas id="durationChart"></canvas>
+
+		<h2>Erase / Undo Counts</h2>
+		<canvas id="editChart"></canvas>
+
+		<div class="chart-row">
+			<div class="chart-container square">
+				<h2>Reference Usage</h2>
+				<canvas id="referenceChart"></canvas>
+			</div>
+
+			<div class="chart-container square">
+				<h2>Color changes</h2>
+				<canvas id="colorChart"></canvas>
+			</div>
+		</div>
+
+		<h2>Total strokes drawn</h2>
+		<canvas id="strokeCountChart"></canvas>
+
+		<h2>How big is drawing</h2>
+		<canvas id="boundsChart"></canvas>
+
+		<script src="app.js"></script>
+	</body>
+</html>

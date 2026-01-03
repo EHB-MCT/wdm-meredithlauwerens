@@ -1,0 +1,75 @@
+/* style.css */
+
+/* Reset & base styles */
+body {
+	font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+	background-color: #f4f7fa;
+	margin: 0;
+	padding: 20px;
+	color: #333;
+}
+
+h1 {
+	text-align: center;
+	margin-bottom: 30px;
+	color: #222;
+}
+
+h2 {
+	margin-top: 30px;
+	margin-bottom: 10px;
+	color: #444;
+	text-align: center;
+}
+
+/* User selector styling */
+label {
+	font-weight: bold;
+}
+
+#userSelect {
+	margin-left: 10px;
+	padding: 5px 10px;
+	font-size: 16px;
+}
+
+#userSelect:hover {
+	border: 1px solid #888;
+}
+
+/* Chart styling */
+canvas {
+	background-color: #fff;
+	border-radius: 10px;
+	padding: 15px;
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+	margin-bottom: 50px;
+	max-width: 800px;
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+	width: 100% !important;
+	height: 400px !important;
+}
+
+.chart-container {
+	max-width: 400px; /* or whatever you want */
+	margin: 0 10px;
+}
+
+.chart-container.square {
+	aspect-ratio: 1 / 1; /* makes it always square */
+}
+
+.chart-row {
+	display: flex;
+	justify-content: center;
+	flex-wrap: wrap; /* wrap on small screens */
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+	canvas {
+		height: 300px !important;
+	}
+}
