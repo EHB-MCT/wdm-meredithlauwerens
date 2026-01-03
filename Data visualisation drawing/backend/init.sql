@@ -25,7 +25,8 @@ CREATE TABLE topic_drawings (
     uid TEXT NOT NULL,
     topic TEXT NOT NULL,
     used_reference BOOLEAN NOT NULL,
-    strokes JSONB NOT NULL
+    strokes JSONB NOT NULL,
+    stroke_count INT
 );
 
 CREATE TABLE events (
